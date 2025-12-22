@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Partículas</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0a0a0a; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const PARTICLE_COUNT = 200;
+        const CONNECTION_DISTANCE = 250;
+        const MOUSE_RADIUS = 150;
+        const particles = [];
+        
+        let mouse = { x: null, y: null, active: false };
+
+        canvas.addEventListener('mouseenter', () => mouse.active = true);
+        canvas.addEventListener('mouseleave', () => mouse.active = false);
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function randomEdgePosition() {
+            const edge = Math.floor(Math.random() * 4);
+            let x, y;
+            
+            switch(edge) {
+                case 0: x = -10; y = Math.random() * canvas.height; break;
+                case 1: x = canvas.width + 10; y = Math.random() * canvas.height; break;
+                case 2: x = Math.random() * canvas.width; y = -10; break;
+                case 3: x = Math.random() * canvas.width; y = canvas.height + 10; break;
+            }
+            return { x, y };
+        }
+
+        function createParticle() {
+            const pos = randomEdgePosition();
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 0.5 + Math.random() * 2.5;
+            
+            return {
+                x: pos.x,
+                y: pos.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                radius: 2.5
+            };
+        }
+
+        function isOutOfBounds(p) {
+            return p.x < -20 || p.x > canvas.width + 20 || 
+                   p.y < -20 || p.y > canvas.height + 20;
+        }
+
+        function getDistance(p1, p2) {
+            const dx = p1.x - p2.x;
+            const dy = p1.y - p2.y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function lineIntersectsCircle(x1, y1, x2, y2, cx, cy, r) {
+            // Verifica se o segmento de linha cruza o círculo
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const fx = x1 - cx;
+            const fy = y1 - cy;
+            
+            const a = dx * dx + dy * dy;
+            if (a === 0) return false; // pontos iguais
+            
+            const b = 2 * (fx * dx + fy * dy);
+            const c = (fx * fx + fy * fy) - r * r;
+            
+            let discriminant = b * b - 4 * a * c;
+            if (discriminant < 0) return false; // não intercepta
+            
+            discriminant = Math.sqrt(discriminant);
+            
+            const t1 = (-b - discriminant) / (2 * a);
+            const t2 = (-b + discriminant) / (2 * a);
+            
+            // Verifica se a interseção está dentro do segmento (0 <= t <= 1)
+            if ((t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1)) {
+                return true;
+            }
+            
+            // Verifica se o segmento está completamente dentro do círculo
+            if (t1 < 0 && t2 > 1) {
+                return true;
+            }
+            
+            return false;
+        }
+
+        function drawConnections() {
+            // Usar raio menor para verificação de linhas
+            // Permite que partículas na borda se conectem
+            const lineCheckRadius = MOUSE_RADIUS * 0.85;
+            
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dist = getDistance(particles[i], particles[j]);
+                    if (dist < CONNECTION_DISTANCE) {
+                        if (mouse.active && mouse.x !== null) {
+                            if (lineIntersectsCircle(
+                                particles[i].x, particles[i].y,
+                                particles[j].x, particles[j].y,
+                                mouse.x, mouse.y, lineCheckRadius
+                            )) {
+                                continue;
+                            }
+                        }
+                        
+                        const opacity = 1 - (dist / CONNECTION_DISTANCE);
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function update() {
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                
+                if (mouse.active && mouse.x !== null) {
+                    const dx = p.x - mouse.x;
+                    const dy = p.y - mouse.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < MOUSE_RADIUS) {
+                        const angle = Math.atan2(dy, dx);
+                        const targetX = mouse.x + Math.cos(angle) * MOUSE_RADIUS;
+                        const targetY = mouse.y + Math.sin(angle) * MOUSE_RADIUS;
+                        
+                        p.x += (targetX - p.x) * 0.1;
+                        p.y += (targetY - p.y) * 0.1;
+                        
+                        p.x += p.vx * 0.7;
+                        p.y += p.vy * 0.7;
+                    } else {
+                        p.x += p.vx;
+                        p.y += p.vy;
+                    }
+                } else {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                }
+
+                if (isOutOfBounds(p)) {
+                    particles.splice(i, 1);
+                }
+            }
+
+            while (particles.length < PARTICLE_COUNT) {
+                particles.push(createParticle());
+            }
+
+            drawConnections();
+
+            for (const p of particles) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+        update();
+    </script>
+</body>
+</html>
